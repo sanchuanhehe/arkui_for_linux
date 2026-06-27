@@ -83,7 +83,7 @@ template("stage_linux_source_set") {
 
 foreach(item, ace_platforms) {
   platform = item.name
-  if (platform == "mac") {
+  if (platform == "linux") {
     stage_linux_source_set("stage_linux_entrance") {
       defines = []
       cflags_cc = []

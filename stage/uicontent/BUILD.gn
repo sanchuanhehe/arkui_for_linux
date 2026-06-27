@@ -83,7 +83,7 @@ template("ace_uicontent_linux_source_set") {
 
 foreach(item, ace_platforms) {
   platform = item.name
-  if (platform == "mac") {
+  if (platform == "linux") {
     ace_uicontent_linux_source_set("ace_uicontent_" + item.name) {
       defines = []
 

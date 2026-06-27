@@ -27,14 +27,11 @@ ohos_executable("ace_linux") {
 
   include_dirs = [ "$ace_root/adapter/linux/entrance" ]
 
-  # Stage B will add the full ArkUI framework dep here:
+  # Stage A keeps ace_linux self-contained (deps=[]) so the linux product +
+  # toolchain + adapter skeleton stay gn-gen/ninja clean. Stage B wires
   #   "$ace_root/build:libace_static_linux"
-  # That pulls the linux platform_deps (via ace_lib.gni). The linux platform
-  # currently routes through the GLFW preview config (config_linux.gni ->
-  # preview_common.gni); Stage B reroutes it to the Android-style client-side
-  # EGL model (ROSEN_ARKUI_X) so the framework builds for real rendering.
-  # Stage A keeps ace_linux self-contained so the linux product + toolchain +
-  # adapter skeleton gn-gen and ninja-load cleanly.
+  # once the adapter/linux layers (osal/entrance/stage/uicontent) are built out
+  # and the linux platform is rerouted from preview to client-side EGL.
   deps = []
 
   subsystem_name = "arkui"

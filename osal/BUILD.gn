@@ -113,6 +113,7 @@ template("ace_osal_linux_source_set") {
 
     include_dirs = [
       "$ace_root/adapter/linux/entrance",
+      "$ace_root/adapter/linux/stage/ability",
       # Phase 0 path X: mac reuses the iOS logging bridge header
       # (LogInterfaceBridge.h lives under the iOS entrance logIntercept dir).
       "$ace_root/adapter/ios/entrance/logIntercept",

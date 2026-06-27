@@ -31,6 +31,7 @@ template("ace_linux_source_set") {
     include_dirs = [
       "$ace_root/frameworks",
       "$ace_root",
+      "$ace_root/adapter/linux",
       "$ace_root/adapter/linux/entrance",
       "$ace_root/adapter/linux/stage/ability",
       "//foundation/appframework/window_manager/interfaces/innerkits/wm",

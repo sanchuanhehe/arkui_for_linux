@@ -28,8 +28,7 @@
 #include "core/common/container.h"
 #endif
 
-#import <os/log.h>
-#include "LogInterfaceBridge.h"
+#include <cstdio>
 #include "vsnprintf_s_p.h"
 
 namespace OHOS::Ace {
@@ -201,8 +200,7 @@ std::string GetTimeStamp()
     return std::string(time);
 }
 
-constexpr os_log_type_t LOG_TYPE[] = { OS_LOG_TYPE_DEBUG, OS_LOG_TYPE_INFO, OS_LOG_TYPE_DEFAULT, OS_LOG_TYPE_ERROR,
-    OS_LOG_TYPE_FAULT };
+// [linux-port] Apple os_log_type_t table dropped; linux logs via fprintf(stderr).
     
 // Phase 0 path X: with USE_HILOG defined (true for is_mac in ace_config.gni), the
 // shared frameworks/base/log/log_wrapper.cpp drops the variadic PrintLog overload
@@ -229,15 +227,10 @@ void LogWrapper::PrintLog(LogDomain domain, LogLevel level, AceLogTag tag, const
         return;
     }
 
-    if (HasDelegateMethod() && level >= GetCurrentLogLevel()) {
-        std::string logInfo(buffer);
-        PassLogMessageOC(LOG_TAGS[static_cast<uint32_t>(domain)], static_cast<int>(level), logInfo);
-        return;
-    }
-
-    os_log_type_t logType = LOG_TYPE[static_cast<int>(level)];
-    os_log_t log = os_log_create(LOG_TAGS[static_cast<uint32_t>(domain)], GetNameForLogLevel(level));
-    os_log(log, "[%{public}s] %{public}s", GetNameForLogLevel(level), buffer);
+    // [linux-port] No Apple os_log / Objective-C delegate bridge on linux; emit
+    // the formatted line to stderr.
+    fprintf(stderr, "[%s][%s] %s\n", LOG_TAGS[static_cast<uint32_t>(domain)],
+        GetNameForLogLevel(level), buffer);
 }
 
 #ifdef ACE_INSTANCE_LOG

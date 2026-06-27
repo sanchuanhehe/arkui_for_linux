@@ -32,6 +32,7 @@ template("ace_uicontent_linux_source_set") {
     ]
 
     include_dirs = [
+      "$ace_root/adapter/linux/stage/ability",
       "//third_party/zlib",
       "//arkcompiler/ets_runtime",
       "//arkcompiler/runtime_core",

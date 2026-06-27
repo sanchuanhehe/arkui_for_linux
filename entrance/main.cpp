@@ -13,21 +13,35 @@
  * limitations under the License.
  */
 
-// ArkUI-X Linux/Wayland native app entry (Route A).
-//
-// Stage A: a minimal entry so the ace_linux executable target is gn-resolvable
-// and the libace_static_linux build graph gets pulled in. The real Wayland
-// window + EGL surface + ability lifecycle bring-up lands in Stage C/D
-// (adapter/linux/entrance/wayland_window.* + main loop).
+// Linux/Wayland native app entry. Replaces the macOS NSApplicationMain entry:
+// there is no NSApplication / activation policy / Dock. Instead we connect to the
+// Wayland display, hand off to MacAppDelegate (which brings up the WindowView),
+// then run a wl_display_dispatch event loop (the analogue of [app run]).
 
-#include <cstdio>
+#include "MacAppDelegate.h"
+#include "WindowView.h"
+#include "base/log/log.h"
 
-int main(int argc, char* argv[])
+int main(int argc, const char* argv[])
 {
     (void)argc;
     (void)argv;
-    // Stage C will replace this with: wl_display_connect -> xdg_shell window ->
-    // wl_egl_window -> EGLSurface -> ace ability lifecycle -> RS render loop.
-    printf("ace_linux: ArkUI-X Linux/Wayland native shell (Route A) — skeleton\n");
+
+    // Connect the shared Wayland context (wl_display + registry: wl_compositor /
+    // xdg_wm_base / wl_seat). Was [NSApplication sharedApplication].
+    WaylandContext& ctx = WaylandContext::GetInstance();
+    if (!ctx.Connect()) {
+        LOGE("main: failed to connect to Wayland display");
+        return 1;
+    }
+
+    MacAppDelegate delegate;
+    delegate.ApplicationDidFinishLaunching();
+
+    // Wayland event loop. Was [app run]. Dispatch returns false once the display
+    // connection is gone (e.g. compositor exit), which ends the loop.
+    while (ctx.Dispatch()) {
+    }
+
     return 0;
 }

@@ -1,0 +1,124 @@
+# Copyright (c) 2026 Huawei Device Co., Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Linux/Wayland native entrance source set (Route A). Ported from the macOS
+# entrance: NSWindow/NSView/CAOpenGLLayer -> wl_surface/xdg_toplevel/wl_egl_window
+# + EGLSurface; NSApplicationMain -> wl_display dispatch loop; input via wl_seat.
+# The deep RS-pipeline blit + full input HID mapping are Stage C2 follow-ups
+# (compile-clean stubs preserve the interfaces the framework calls).
+
+import("//build/ohos.gni")
+import("//foundation/arkui/ace_engine/ace_config.gni")
+import("//foundation/graphic/graphic_2d/graphic_config.gni")
+
+template("ace_linux_source_set") {
+  forward_variables_from(invoker, "*")
+
+  ohos_source_set(target_name) {
+    defines += invoker.defines
+    cflags_cc += invoker.cflags_cc
+
+    include_dirs = [
+      "$ace_root/frameworks",
+      "$ace_root",
+      "$ace_root/adapter/linux/entrance",
+      "$ace_root/adapter/linux/stage/ability",
+      "//foundation/appframework/window_manager/interfaces/innerkits/wm",
+      "//foundation/appframework/window_manager/interfaces/innerkits/dm",
+      "//foundation/appframework/window_manager/dm/include",
+      "//foundation/appframework/window_manager/utils/include",
+      "//foundation/graphic/graphic_surface/interfaces/inner_api/surface",
+      "//base/hiviewdfx/hilog/interfaces/native/innerkits/include",
+      "//foundation/graphic/graphic_2d/rosen/modules/render_service_client/core",
+      "//third_party/node/src",
+      "//foundation/arkui/napi/interfaces/kits",
+      "//foundation/multimodalinput/input/interfaces/native/innerkits/event/include",
+      "//foundation/graphic/graphic_2d/rosen/modules/2d_graphics/src",
+    ]
+
+    sources = [
+      "WindowView.cpp",
+      "interaction/interaction_impl.cpp",
+      "mmi_event_convertor.cpp",
+      "ace_platform_plugin.cpp",
+      "dump_helper.cpp",
+      "ui_session/ui_session_json_util.cpp",
+      "display_info.cpp",
+      "display_manager_agent.cpp",
+      "ace_application_info_impl.cpp",
+      "ace_pointer_data.cc",
+      "ace_pointer_data_packet.cc",
+      "touch_event.cpp",
+      "touch_event_convertor.cpp",
+      "utils.cpp",
+      "virtual_rs_window.cpp",
+      # Generated xdg-shell client protocol glue (wayland-scanner private-code).
+      "wayland/xdg-shell-protocol.c",
+    ]
+
+    if (target_cpu == "arm64") {
+      defines += [ "_ARM64_" ]
+    }
+
+    defines += [
+      "BUILD_FOR_ARKUI",
+      "CROSS_PLATFORM",
+      "ACE_ENABLE_GL",
+    ]
+
+    configs = [
+      "$ace_root:ace_config",
+      "//foundation/appframework/ability/ability_runtime/cross_platform/interfaces/kits/native/ability:abilitykit_native_config",
+      "//foundation/appframework/ability/ability_runtime/cross_platform/interfaces/kits/native/appkit:appkit_native_config",
+      "//foundation/appframework/ability/ability_runtime/cross_platform/interfaces/inner_api/hilog:ability_cross_platform_hilog_config",
+      "//foundation/appframework/ability/ability_runtime/cross_platform/interfaces/inner_api/jsruntime:jsruntime_config",
+    ]
+
+    deps = [
+      "//foundation/graphic/graphic_2d/rosen/modules/render_service_client:librender_service_client_static",
+    ]
+
+    # System Wayland/EGL/GLES/xkbcommon (the OHOS prebuilt clang's default sysroot
+    # resolves these headers; libs link into the ace_linux executable).
+    libs = [
+      "wayland-client",
+      "wayland-egl",
+      "EGL",
+      "GLESv2",
+      "xkbcommon",
+    ]
+
+    subsystem_name = "arkui"
+  }
+}
+
+foreach(item, ace_platforms) {
+  platform = item.name
+  if (platform == "linux") {
+    ace_linux_source_set("ace_linux_entrance") {
+      defines = []
+      cflags_cc = []
+      config = {
+      }
+      if (defined(item.config)) {
+        config = item.config
+      }
+      if (defined(config.defines)) {
+        defines = config.defines
+      }
+      if (defined(config.cflags_cc)) {
+        cflags_cc = config.cflags_cc
+      }
+    }
+  }
+}

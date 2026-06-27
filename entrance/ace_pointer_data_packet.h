@@ -19,6 +19,8 @@
 #include <cstring>
 #include <vector>
 #include "ace_pointer_data.h"
+// [linux-port] strict libc++: explicit std includes (mac clang pulled these in transitively)
+#include <cstdint>
 namespace OHOS::Ace::Platform {
 
 class AcePointerDataPacket {

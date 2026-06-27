@@ -23,6 +23,9 @@
 #include <unordered_map>
 
 #include "base/utils/macros.h"
+// [linux-port] strict libc++: explicit std includes (mac clang pulled these in transitively)
+#include <memory>
+#include <vector>
 
 namespace OHOS {
 namespace AbilityRuntime {

@@ -42,6 +42,10 @@
   es2abc 默认产 24.0.0.0，匹配。
 - **bundle 记录名**：arkui-x 共享 runtime（`module_profile.cpp:760 package=moduleName`）要**模块相对** record
   `entry/ets/...`（无 bundleName 前缀）；ets2bundle 默认产 `<bundleName>/<moduleName>/...`，需配/patch 去前缀。
+- **Stage D 真 .ets 上屏根因**：有无 `pkgContextInfo.json` 决定 record 解析走 @normalized 还是旧打包
+  （`ecma_vm.h:738 IsNormalizedOhmUrlPack()=!pkgContextInfoList_.empty()`）。完整根因深析 + 官方 SDK 续接见
+  macos-native `docs/linux-port-journal.md §3`。
+- 实现机制（渲染呈现管线/事件循环/Stage 接线/链接桩）见 [`docs/实现笔记.md`](docs/实现笔记.md)。
 - 详细移植史/恢复点见 Claude 记忆 `arkui-x-linux-port-progress`。
 
 ## 4. 阶段（Definition of Done，按依赖推进）

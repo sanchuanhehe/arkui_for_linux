@@ -26,7 +26,13 @@ ArkUI-X 的 **Linux / Wayland 原生适配层**(`ace_engine` 的 `adapter/linux`
 
 > 工程补丁集与完整复现见
 > [`arkui-x-macos-native`](https://github.com/sanchuanhehe/arkui-x-macos-native)
-> 仓的 `docs/linux-wayland-plan.md`。
+> 仓的 `docs/linux-wayland-plan.md`(前瞻计划)与 `docs/linux-port-journal.md`(实证日志)。
+
+## 文档
+
+- [`docs/实现笔记.md`](docs/实现笔记.md) —— **真编真跑**得到的实现机制与坑:渲染呈现管线
+  (RS→GL 纹理上屏)、事件驱动主循环、Stage 启动接线、osal 链接桩、平台事实。
+- [`CLAUDE.md`](CLAUDE.md) —— 本仓工作约定(改动分界 / 验证门 / 平台避坑事实)。
 
 ## 许可
 基于 OpenHarmony / ArkUI-X(Apache-2.0)二次开发,本仓以 **Apache-2.0** 发布。

@@ -21,8 +21,11 @@
 
 #include "WindowView.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <vector>
 
 #include <wayland-client.h>
 #include <wayland-egl.h>
@@ -743,6 +746,33 @@ void WindowView::Present()
     glViewport(0, 0, w, h);
     glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    // [linux-port] Headless CI verification: ACE_SHOT_PPM=<path> dumps the rendered
+    // back buffer once (glReadPixels is bottom-up, so write rows flipped) as a binary
+    // PPM — no image lib needed; weston-screenshooter asserts on the headless output.
+    static bool shotDone = false;
+    const char* shotPath = getenv("ACE_SHOT_PPM");
+    if (shotPath != nullptr && !shotDone && w > 0 && h > 0) {
+        shotDone = true;
+        std::vector<unsigned char> rgba(static_cast<size_t>(w) * h * 4);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        FILE* fp = fopen(shotPath, "wb");
+        if (fp != nullptr) {
+            fprintf(fp, "P6\n%d %d\n255\n", w, h);
+            std::vector<unsigned char> row(static_cast<size_t>(w) * 3);
+            for (int32_t y = h - 1; y >= 0; --y) {
+                const unsigned char* src = rgba.data() + static_cast<size_t>(y) * w * 4;
+                for (int32_t x = 0; x < w; ++x) {
+                    row[x * 3 + 0] = src[x * 4 + 0];
+                    row[x * 3 + 1] = src[x * 4 + 1];
+                    row[x * 3 + 2] = src[x * 4 + 2];
+                }
+                fwrite(row.data(), 1, row.size(), fp);
+            }
+            fclose(fp);
+            LOGI("WindowView::Present: screenshot written to %{public}s (%dx%d)", shotPath, w, h);
+        }
+    }
 
     // Re-arm the frame callback before swapping for a vsync-paced loop.
     if (displayLinkStarted_ && wlSurface_ != nullptr) {

@@ -598,6 +598,11 @@ void UIContentImpl::InitAceInfoFromResConfig()
     SystemProperties::SetResolution(density);
 }
 
+void UIContentImpl::SetIgnoreViewSafeArea(bool ignoreViewSafeArea)
+{
+    // [linux-port] desktop client has no system safe-area insets.
+}
+
 void UIContentImpl::Foreground()
 {
     LOGI("UIContentImpl: window foreground");

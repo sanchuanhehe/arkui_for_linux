@@ -13,8 +13,6 @@
  * limitations under the License.
  */
 
-#include "adapter/ios/capability/editing/text_input_client_handler.h"
-#include "adapter/ios/capability/editing/text_input_connection_impl.h"
 #include "core/common/container.h"
 #include "core/common/ime/input_method_manager.h"
 #include "core/common/ime/text_input_connection.h"
@@ -71,23 +69,9 @@ bool InputMethodManager::NeedSoftKeyboard() const
     return false;
 }
 
-void InputMethodManager::CloseKeyboard(bool disableNeedToRequestKeyboard)
+void InputMethodManager::CloseKeyboard(int32_t instanceId)
 {
-    auto currentFocusNode = curFocusNode_.Upgrade();
-    CHECK_NULL_VOID(currentFocusNode);
-    auto pipeline = currentFocusNode->GetContext();
-    CHECK_NULL_VOID(pipeline);
-    auto textFieldManager = pipeline->GetTextFieldManager();
-    CHECK_NULL_VOID(textFieldManager);
-    if (disableNeedToRequestKeyboard) {
-        textFieldManager->SetNeedToRequestKeyboard(false);
-    }
-    auto container = Container::Current();
-    CHECK_NULL_VOID(container);
-    auto instanceId = container->GetInstanceId();
-    auto connection = Platform::TextInputClientHandler::GetInstance().GetCurrentConnection();
-    CHECK_NULL_VOID(connection);
-    connection->Close(instanceId);
+    // [linux-port] desktop IME stub.
 }
 
 void InputMethodManager::CloseKeyboard(const RefPtr<NG::FrameNode>& focusNode)
@@ -111,36 +95,22 @@ void InputMethodManager::ProcessModalPageScene() {}
 
 void InputMethodManager::ShowKeyboard(bool isFocusViewChanged, int32_t instanceId)
 {
-    auto connection = Platform::TextInputClientHandler::GetInstance().GetCurrentConnection();
-    CHECK_NULL_VOID(connection);
-    connection->Show(isFocusViewChanged, instanceId);
+    // [linux-port] desktop IME stub: soft keyboard not used on the Wayland client.
 }
 
 void InputMethodManager::SetEditingState(const TextEditingValue& value, int32_t instanceId, bool needFireChangeEvent)
 {
-    auto connection = Platform::TextInputClientHandler::GetInstance().GetCurrentConnection();
-    CHECK_NULL_VOID(connection);
-    connection->SetEditingState(value, instanceId, needFireChangeEvent);
-}
-
-void InputMethodManager::CloseKeyboard(int32_t instanceId)
-{
-    auto connection = Platform::TextInputClientHandler::GetInstance().GetCurrentConnection();
-    CHECK_NULL_VOID(connection);
-    connection->Close(instanceId);
+    // [linux-port] desktop IME stub.
 }
 
 void InputMethodManager::Attach(const WeakPtr<TextInputClient>& client, const TextInputConfiguration& config,
     const RefPtr<TaskExecutor>& taskExecutor, int32_t instanceId)
 {
-    auto connection = AceType::MakeRefPtr<Platform::TextInputConnectionImpl>(client, taskExecutor, config);
-    Platform::TextInputClientHandler::GetInstance().SetCurrentConnection(connection);
+    // [linux-port] desktop IME stub.
 }
 
 void InputMethodManager::FinishComposing(int32_t instanceId)
 {
-    auto connection = Platform::TextInputClientHandler::GetInstance().GetCurrentConnection();
-    CHECK_NULL_VOID(connection);
-    connection->FinishComposing(instanceId);
+    // [linux-port] desktop IME stub.
 }
 } // namespace OHOS::Ace

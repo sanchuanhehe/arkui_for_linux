@@ -54,6 +54,9 @@ public:
     void Initialize(OHOS::Rosen::Window* window, const std::string& url, napi_value storage) override;
     void InitializeByName(OHOS::Rosen::Window* window, const std::string& name, napi_value storage) override;
     napi_value GetUINapiContext() override;
+    // Linux/Wayland native port: implement the safe-area pure virtual (desktop has
+    // no system insets, so this is a no-op).
+    void SetIgnoreViewSafeArea(bool ignoreViewSafeArea) override;
     void Foreground() override;
     void Background() override;
     void Focus() override;

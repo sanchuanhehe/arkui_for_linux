@@ -41,6 +41,13 @@ public:
 
     const std::string& GetInstanceName() const;
 
+    /**
+     * Stage D: bring up the Wayland WindowView + RS surface node and drive the ability
+     * lifecycle (AppMain DispatchOnCreate/Foreground) so the module .abc loads and its
+     * page tree renders. Mirrors the macOS loadView/viewDidLoad.
+     */
+    void LoadView();
+
     /** Get the Id of StageViewController. */
     int32_t GetInstanceId() const;
 

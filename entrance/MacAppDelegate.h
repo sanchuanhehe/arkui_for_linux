@@ -23,6 +23,7 @@
 #define FOUNDATION_ACE_ADAPTER_LINUX_ENTRANCE_APP_DELEGATE_H
 
 class WindowView;
+class StageViewController;
 
 class MacAppDelegate {
 public:
@@ -40,6 +41,7 @@ public:
 
 private:
     WindowView* window_ = nullptr;
+    StageViewController* stageViewController_ = nullptr;
 };
 
 #endif // FOUNDATION_ACE_ADAPTER_LINUX_ENTRANCE_APP_DELEGATE_H

@@ -24,8 +24,11 @@
 
 #include "InstanceIdGenerator.h"
 #include "StageAssetManager.h"
+#include "WindowView.h"
+#include "app_main.h"
 #include "base/log/log.h"
 #include "version_printer.h"
+#include "window_view_adapter.h"
 
 namespace {
 std::vector<std::string> SplitString(const std::string& str, char sep)
@@ -83,8 +86,31 @@ StageViewController::StageViewController(const std::string& instanceName)
 StageViewController::~StageViewController()
 {
     LOGI("StageVC dealloc instanceName: %{public}s", instanceName_.c_str());
-    // Stage C: Wayland surface. notifySurfaceDestroyed / notifyWindowDestroyed and
-    // AppMain::DispatchOnDestroy belong to the Wayland surface teardown (TODO).
+    if (!cInstanceName_.empty()) {
+        OHOS::AbilityRuntime::Platform::AppMain::GetInstance()->DispatchOnDestroy(cInstanceName_);
+    }
+}
+
+// Stage D: mirrors the macOS StageViewController loadView/viewDidLoad. Brings up the
+// Wayland WindowView (surface + RS surface node wired to OnRsFrame), registers it with
+// the WindowViewAdapter under this instance name, then drives the ability lifecycle
+// (AppMain DispatchOnCreate loads the module .abc + builds UIContent; DispatchOn
+// Foreground renders the page tree). The page-tree pixels then flow RS -> OnRsFrame ->
+// the C2-b texture present pipeline -> the wl_egl_window EGL surface.
+void StageViewController::LoadView()
+{
+    LOGI("StageVC LoadView instanceName: %{public}s", cInstanceName_.c_str());
+    auto* windowView = new WindowView();
+    windowView_ = windowView;
+    windowView->NotifySurfaceChangedWithWidth(480, 800, 1.0f);
+    windowView->StartBaseDisplayLink();
+    OHOS::AbilityRuntime::Platform::WindowViewAdapter::GetInstance()->AddWindowView(cInstanceName_, windowView_);
+    windowView->ShowOnView(nullptr);
+    windowView->CreateSurfaceNode();
+
+    auto appMain = OHOS::AbilityRuntime::Platform::AppMain::GetInstance();
+    appMain->DispatchOnCreate(cInstanceName_, "");
+    appMain->DispatchOnForeground(cInstanceName_);
 }
 
 const std::string& StageViewController::GetInstanceName() const

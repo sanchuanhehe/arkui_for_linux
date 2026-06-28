@@ -25,12 +25,20 @@
 
 #include "MacAppDelegate.h"
 
+#include <cstdlib>
+#include <string>
+
+#include "StageApplication.h"
+#include "StageViewController.h"
 #include "WindowView.h"
 #include "base/log/log.h"
 
 namespace {
 constexpr int32_t WINDOW_WIDTH = 480;
 constexpr int32_t WINDOW_HEIGHT = 800;
+// Mirrors the macOS MacAppDelegate.mm defaults.
+const char* const BUNDLE_DIRECTORY = "arkui-x";
+const char* const STAGE_INSTANCE_NAME = "com.example.helloworld:entry:EntryAbility";
 } // namespace
 
 MacAppDelegate::~MacAppDelegate()
@@ -43,14 +51,25 @@ void MacAppDelegate::ApplicationDidFinishLaunching()
 {
     LOGI("MacAppDelegate::ApplicationDidFinishLaunching");
 
-    // Stage C: configure the .abc / module bundle and start AbilityRuntime. The
-    // macOS path called [StageApplication configModuleWithBundleDirectory:@"arkui-x"]
-    // then [StageApplication launchApplication]; the Wayland stage host is a
-    // follow-up. Once wired, Window::Create(context, windowView) replaces the bare
-    // WindowView below so the RS/UIContent pipeline drives the surface.
+    // Stage D: when a real .abc bundle is present (ACE_STAGE_LAUNCH set), mirror the
+    // macOS path — configModuleWithBundleDirectory + launchApplication, then a
+    // StageViewController whose LoadView brings up the WindowView + RS surface node and
+    // drives the ability lifecycle (AppMain DispatchOnCreate/Foreground) so the page
+    // tree renders through the C2-b texture present pipeline. Gated so the default
+    // (no bundle) still opens the verified bare window and never crashes on a missing
+    // module.
+    if (std::getenv("ACE_STAGE_LAUNCH") != nullptr) {
+        LOGI("MacAppDelegate: stage launch (bundle=%{public}s)", BUNDLE_DIRECTORY);
+        StageApplication::ConfigModuleWithBundleDirectory(BUNDLE_DIRECTORY);
+        StageApplication::LaunchApplication();
+        stageViewController_ = new StageViewController(STAGE_INSTANCE_NAME);
+        stageViewController_->LoadView();
+        return;
+    }
 
-    // Bring up the on-screen Wayland window (the verified wl_egl_window + EGLSurface
-    // path). This mirrors what StageViewController did via createSurfaceNode.
+    // Default (Stage C): bring up the on-screen Wayland window only (verified
+    // wl_egl_window + EGLSurface path), no ability/page — RS shows the entrance clear
+    // color / ACE_TEST_FRAME pattern.
     window_ = new WindowView();
     window_->NotifySurfaceChangedWithWidth(WINDOW_WIDTH, WINDOW_HEIGHT, 1.0f);
     window_->ShowOnView(nullptr);

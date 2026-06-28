@@ -28,8 +28,11 @@ ohos_executable("ace_linux") {
   ]
 
   include_dirs = [
+    "$ace_root",
+    "$ace_root/frameworks",
     "$ace_root/adapter/linux/entrance",
     "$ace_root/adapter/linux/stage/ability",
+    "$ace_root/adapter/linux/stage/uicontent",
   ]
 
   deps = [

@@ -31,7 +31,7 @@
 #include "transaction/rs_interfaces.h"
 #include "render_service_client/core/ui/rs_ui_director.h"
 #include "render_service_client/core/ui/rs_ui_context.h"
-#if defined(MAC_PLATFORM)
+#if defined(MAC_PLATFORM) || defined(LINUX_PLATFORM)
 #include "render_service_client/core/pipeline/rs_render_thread.h"
 #include "transaction/rs_irender_client.h"
 #include "transaction/rs_transaction_proxy.h"
@@ -800,13 +800,15 @@ void Window::CreateSurfaceNode(void* layer)
     struct OHOS::Rosen::RSSurfaceNodeConfig rsSurfaceNodeConfig = { .SurfaceNodeName = "arkui-x_surface",
         .additionalData = layer };
     surfaceNode_ = Rosen::RSSurfaceNode::Create(rsSurfaceNodeConfig, true, rsUidriect_->GetRSUIContext());
-#if defined(MAC_PLATFORM)
-    // ArkUI-X macOS (M1 格-c2): the private RSUIDirector::Init() (which iOS reaches via a
-    // different surface-timing path) never ran here, so the implicit transaction had no
+#if defined(MAC_PLATFORM) || defined(LINUX_PLATFORM)
+    // ArkUI-X macOS/linux (M1 Stage C2-a): the private RSUIDirector::Init() (which iOS reaches
+    // via a different surface-timing path) never ran here, so the implicit transaction had no
     // renderThreadClient_ and every committed page tree was silently dropped
     // (rs_transaction_handler.cpp:164 only commits when renderThreadClient_!=null), the render
     // thread was never Start()'d, and the window never went foreground. Replicate Init()'s
-    // three steps via public APIs so RS actually receives and renders the page tree.
+    // three steps via public APIs so RS actually receives and renders the page tree. (On linux
+    // the render still lands in the windows-platform RSSurface until C2-b swaps in a wl_egl
+    // direct-drive RSSurface + real GL RenderContext.)
     {
         auto renderThreadClient = Rosen::RSIRenderClient::CreateRenderThreadClient();
         auto rsUIContext = rsUidriect_->GetRSUIContext();

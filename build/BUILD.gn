@@ -55,7 +55,18 @@ ohos_executable("ace_linux") {
     # source_set, so linking it into the exe runs the registrars — without it
     # EntryAbility::onWindowStageCreate fails ("load native module application.
     # windowstage failed") and no page loads.
+    #
+    # wm_napi provides the native Rosen::CreateJsWindowStage / JsWindowManagerInit
+    # implementations; the windowstage group (application_windowstage_source_set)
+    # provides window_stage_module.cpp + window_manager_module.cpp whose
+    # __attribute__((constructor)) NAPI_application_WindowStage_AutoRegister /
+    # NAPI_application_windowmanager_AutoRegister register the "application.
+    # WindowStage" (ABC-backed) and "window" NAPI modules at process start. The
+    # AutoRegister symbols are otherwise unreferenced, so the windowstage group
+    # MUST be a direct dep of the exe (source_set objects land on the final link
+    # line; .init_array constructors are roots and survive --gc-sections).
     "//foundation/appframework/window_manager/interfaces/kits/napi/window_runtime:wm_napi",
+    "//foundation/appframework/window_manager/interfaces/kits/napi/window_runtime/window_stage_napi:windowstage",
 
     # ace_kit provides theme TokenColors/TokenTheme + Kit::UIContext symbols.
     "//foundation/arkui/ace_engine/interfaces/inner_api/ace_kit:ace_kit",

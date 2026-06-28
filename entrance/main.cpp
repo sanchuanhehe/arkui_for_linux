@@ -38,10 +38,14 @@ int main(int argc, const char* argv[])
     MacAppDelegate delegate;
     delegate.ApplicationDidFinishLaunching();
 
-    // Wayland event loop. Was [app run]. Dispatch returns false once the display
-    // connection is gone (e.g. compositor exit), which ends the loop.
-    while (ctx.Dispatch()) {
-    }
+    // Unified event-driven main loop. Was [app run] / the old wl_display_dispatch-only
+    // loop, which pumped Wayland events but NEVER drained the ability EventRunner task
+    // queue -- so DispatchOnCreate/onWindowStageCreate/loadContent never ran and no
+    // .ets page rendered. RunEventLoop subscribes the Wayland fd to the runner's epoll
+    // IO waiter and blocks in EventQueue::GetEvent, so one epoll pumps both the ability
+    // lifecycle tasks (-> page tree -> RS render -> OnRsFrame) and Wayland events
+    // (frame callback -> WindowView::Present puts the RS frame on screen).
+    ctx.RunEventLoop();
 
     return 0;
 }

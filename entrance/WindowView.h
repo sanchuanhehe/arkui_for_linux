@@ -83,6 +83,14 @@ public:
     // One blocking wl_display_dispatch; returns false once the display is gone.
     bool Dispatch();
     void Roundtrip();
+    // Unified event-driven main loop (replaces the wl_display_dispatch-only loop in
+    // main.cpp). Subscribes the wl_display fd to the ability EventRunner's epoll IO
+    // waiter via EventHandler::AddFileDescriptorListener, then blocks in
+    // EventQueue::GetEvent so a single epoll pumps BOTH ability lifecycle tasks
+    // (DispatchOnCreate -> onWindowStageCreate -> loadContent -> page tree -> RS
+    // render) and Wayland events (frame callback -> WindowView::Present). Returns
+    // when the queue is finished (process teardown).
+    void RunEventLoop();
     // Lazy eglInitialize + eglChooseConfig + a single shared EGLContext.
     bool EnsureEgl();
 

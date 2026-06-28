@@ -50,6 +50,13 @@ ohos_executable("ace_linux") {
     "//arkcompiler/runtime_core/libpandabase:libarkbase_static",
     "//arkcompiler/runtime_core/libpandafile:libarkfile_runtime_static",
 
+    # Stage D: the window/windowstage NAPI modules self-register at load via
+    # __attribute__((constructor)) (application.WindowStage etc.). They are a
+    # source_set, so linking it into the exe runs the registrars — without it
+    # EntryAbility::onWindowStageCreate fails ("load native module application.
+    # windowstage failed") and no page loads.
+    "//foundation/appframework/window_manager/interfaces/kits/napi/window_runtime:wm_napi",
+
     # ace_kit provides theme TokenColors/TokenTheme + Kit::UIContext symbols.
     "//foundation/arkui/ace_engine/interfaces/inner_api/ace_kit:ace_kit",
   ]

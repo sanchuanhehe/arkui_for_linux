@@ -40,6 +40,14 @@
 #include "ace_pointer_data_packet.h"
 #include "virtual_rs_window.h"
 
+// Ability EventRunner integration (Stage D main loop): subscribe the Wayland fd to
+// the runner's epoll IO waiter and drive the task queue from one blocking loop.
+#include "event_handler.h"
+#include "event_queue.h"
+#include "event_runner.h"
+#include "file_descriptor_listener.h"
+#include "inner_event.h"
+
 namespace {
 constexpr int32_t DEFAULT_WIDTH = 480;
 constexpr int32_t DEFAULT_HEIGHT = 800;
@@ -227,6 +235,89 @@ void WaylandContext::Roundtrip()
     if (display_ != nullptr) {
         wl_display_roundtrip(display_);
     }
+}
+
+// FileDescriptorListener for the Wayland display fd. epoll (inside the ability
+// EventRunner's EpollIoWaiter) reports the fd readable -> the queue posts a high
+// priority task -> GetEvent returns it -> DistributeEvent runs OnReadable here.
+// wl_display_dispatch then reads + dispatches the queued protocol events (xdg
+// configure, input, and crucially the frame-callback done -> WindowView::Present).
+// It does not busy-wait: it is only invoked when the fd is already readable, so the
+// poll inside wl_display_dispatch returns at once. wl_display_flush pushes back out
+// any client requests produced while dispatching (Present's surface commit + the
+// re-armed wl_surface_frame callback).
+namespace {
+class WaylandFdListener : public OHOS::AppExecFwk::FileDescriptorListener {
+public:
+    explicit WaylandFdListener(wl_display* display) : display_(display) {}
+    ~WaylandFdListener() override = default;
+
+    void OnReadable(int32_t /*fileDescriptor*/) override
+    {
+        if (display_ == nullptr) {
+            return;
+        }
+        wl_display_dispatch(display_);
+        wl_display_flush(display_);
+    }
+
+private:
+    wl_display* display_ = nullptr;
+};
+} // namespace
+
+void WaylandContext::RunEventLoop()
+{
+    if (display_ == nullptr) {
+        LOGE("WaylandContext::RunEventLoop: no Wayland display");
+        return;
+    }
+
+    // The ability EventRunner created on this (main) thread by AppMain's ctor
+    // (EventRunner::Current()); its EventQueue owns the EpollIoWaiter we hook the
+    // Wayland fd into. Both are already live by the time the delegate has launched.
+    auto runner = OHOS::AppExecFwk::EventRunner::Current();
+    auto queue = OHOS::AppExecFwk::EventRunner::GetCurrentEventQueue();
+    if (runner == nullptr || queue == nullptr) {
+        LOGE("WaylandContext::RunEventLoop: no current EventRunner/queue");
+        return;
+    }
+
+    // Subscribe the Wayland fd to the runner's epoll set. The listener's owner is
+    // this handler (bound to the main runner), so the fd-ready high priority task
+    // lands on the same queue that GetEvent below drains.
+    auto handler = std::make_shared<OHOS::AppExecFwk::EventHandler>(runner);
+    int32_t wlFd = wl_display_get_fd(display_);
+    auto listener = std::make_shared<WaylandFdListener>(display_);
+    auto ret = handler->AddFileDescriptorListener(
+        wlFd, OHOS::AppExecFwk::FILE_DESCRIPTOR_INPUT_EVENT, listener);
+    if (ret != 0) {
+        LOGE("WaylandContext::RunEventLoop: AddFileDescriptorListener failed (%{public}d)",
+            static_cast<int32_t>(ret));
+    } else {
+        LOGI("WaylandContext::RunEventLoop: Wayland fd %{public}d subscribed to runner epoll", wlFd);
+    }
+
+    // Flush the first surface commit (StartBaseDisplayLink's initial Present armed a
+    // frame callback) so the compositor delivers the first frame-callback done event,
+    // which wakes this loop through the Wayland fd and keeps Present vsync-paced.
+    wl_display_flush(display_);
+
+    LOGI("WaylandContext::RunEventLoop: entering unified epoll-blocking loop");
+    // Single blocking loop. GetEvent's epoll_wait waits on BOTH the task wakeup fd
+    // and the Wayland fd; it returns only when an ability task is ready or the
+    // Wayland fd is readable -- zero spin, no sleep, no poll+retry.
+    for (auto event = queue->GetEvent(); event; event = queue->GetEvent()) {
+        auto owner = event->GetOwner();
+        if (owner) {
+            owner->DistributeEvent(event);
+        }
+        event.reset();
+        // Push out any client requests the task just produced (e.g. a Present commit
+        // + re-armed frame callback) so the compositor reacts and ticks the next vsync.
+        wl_display_flush(display_);
+    }
+    LOGI("WaylandContext::RunEventLoop: loop exited");
 }
 
 bool WaylandContext::EnsureEgl()
@@ -974,10 +1065,31 @@ void WindowView::Present()
     // [linux-port] Headless CI verification: ACE_SHOT_PPM=<path> dumps the rendered
     // back buffer once (glReadPixels is bottom-up, so write rows flipped) as a binary
     // PPM — no image lib needed; weston-screenshooter asserts on the headless output.
+    //
+    // The .ets page tree only reaches the screen several frames after launch (ability
+    // onCreate -> loadContent -> RS render are async), so the very first Present is
+    // just the clear color. Wait until a real RS frame has been uploaded + drawn
+    // (texProgram_ && curW/curH > 0), then give the page a few vsync ticks to settle
+    // before grabbing, so the capture holds the actual page, not clear color. If RS
+    // never emits a frame, fall back to dumping the clear color after many ticks so the
+    // run still produces an inspectable shot (and the empty page is diagnosable).
     static bool shotDone = false;
+    static int32_t presentTicks = 0;
+    static int32_t contentTicks = 0;
+    ++presentTicks;
+    const bool haveRealContent = (texProgram_ != 0 && curW > 0 && curH > 0);
+    if (haveRealContent) {
+        ++contentTicks;
+    }
+    constexpr int32_t SHOT_SETTLE_TICKS = 3;      // ticks of real RS content before grab
+    constexpr int32_t SHOT_FALLBACK_TICKS = 600;  // give up waiting for RS, grab anyway
+    const bool grabShot = haveRealContent ? (contentTicks >= SHOT_SETTLE_TICKS)
+                                          : (presentTicks >= SHOT_FALLBACK_TICKS);
     const char* shotPath = getenv("ACE_SHOT_PPM");
-    if (shotPath != nullptr && !shotDone && w > 0 && h > 0) {
+    if (shotPath != nullptr && !shotDone && grabShot && w > 0 && h > 0) {
         shotDone = true;
+        LOGI("WindowView::Present: capturing shot (%{public}s, presentTicks=%d contentTicks=%d)",
+            haveRealContent ? "RS content" : "clear-color fallback", presentTicks, contentTicks);
         std::vector<unsigned char> rgba(static_cast<size_t>(w) * h * 4);
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
         FILE* fp = fopen(shotPath, "wb");

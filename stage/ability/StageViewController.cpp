@@ -103,10 +103,13 @@ void StageViewController::LoadView()
     auto* windowView = new WindowView();
     windowView_ = windowView;
     windowView->NotifySurfaceChangedWithWidth(480, 800, 1.0f);
-    windowView->StartBaseDisplayLink();
     OHOS::AbilityRuntime::Platform::WindowViewAdapter::GetInstance()->AddWindowView(cInstanceName_, windowView_);
+    // ShowOnView creates the wl_surface/wl_egl_window/EGLSurface first; only then start
+    // the display-link present loop (Present early-returns + never re-arms the frame
+    // callback if wlSurface_ is still null), matching the bare-window path order.
     windowView->ShowOnView(nullptr);
     windowView->CreateSurfaceNode();
+    windowView->StartBaseDisplayLink();
 
     auto appMain = OHOS::AbilityRuntime::Platform::AppMain::GetInstance();
     appMain->DispatchOnCreate(cInstanceName_, "");

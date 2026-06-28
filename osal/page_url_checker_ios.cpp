@@ -15,6 +15,7 @@
 
 #include "page_url_checker_ios.h"
 
+#include <cstring>
 #include <string>
 
 namespace OHOS::Ace {

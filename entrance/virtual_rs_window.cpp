@@ -708,7 +708,7 @@ WMError Window::SetTouchable(bool isTouchable)
     // Phase 0 path X: userInteractionEnabled is a UIKit (UIView) property. The
     // macOS WindowView is an NSView with no direct equivalent; touchability is
     // tracked in isTouchable_ and enforced via hit-testing, so just record it.
-#ifndef MAC_PLATFORM
+#if !defined(MAC_PLATFORM) && !defined(LINUX_PLATFORM)
     windowView_.userInteractionEnabled = isTouchable;
 #endif
     isTouchable_ = isTouchable;
@@ -882,7 +882,7 @@ void Window::NotifySurfaceChanged(int32_t width, int32_t height, float density)
         config.SetDensity(density_);
         config.SetSize(surfaceWidth_, surfaceHeight_);
         config.SetOrientation(surfaceWidth_ <= surfaceHeight_ ? 0 : 1);
-        uiContent_->UpdateViewportConfig(config, WindowSizeChangeReason::RESIZE);
+        uiContent_->UpdateViewportConfig(config, WindowSizeChangeReason::RESIZE, {});
     }
 
     delayNotifySurfaceChanged_ = true;
@@ -1105,7 +1105,7 @@ void Window::DelayNotifyUIContentIfNeeded()
         config.SetDensity(density_);
         config.SetSize(surfaceWidth_, surfaceHeight_);
         config.SetOrientation(surfaceWidth_ <= surfaceHeight_ ? 0 : 1);
-        uiContent_->UpdateViewportConfig(config, WindowSizeChangeReason::RESIZE);
+        uiContent_->UpdateViewportConfig(config, WindowSizeChangeReason::RESIZE, {});
     }
 
     if (delayNotifySurfaceDestroyed_) {

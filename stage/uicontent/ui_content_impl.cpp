@@ -888,7 +888,8 @@ void UIContentImpl::ProcessWindowSizeLayoutBreakPointChange(double density)
     }
 }
 
-void UIContentImpl::UpdateViewportConfig(const ViewportConfig& config, OHOS::Rosen::WindowSizeChangeReason reason)
+void UIContentImpl::UpdateViewportConfig(const ViewportConfig& config, OHOS::Rosen::WindowSizeChangeReason reason,
+    const std::map<OHOS::Rosen::AvoidAreaType, OHOS::Rosen::AvoidArea>& avoidAreas)
 {
     LOGI("UIContentImpl: UpdateViewportConfig %{public}s", config.ToString().c_str());
     ProcessWindowSizeLayoutBreakPointChange(config.Density());

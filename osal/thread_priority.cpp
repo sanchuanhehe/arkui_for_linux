@@ -14,6 +14,7 @@
  */
 
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -33,8 +34,7 @@ void ThreadPriority::SetThreadPriority(OHOS::Ace::TaskExecutor::TaskType taskTyp
 
 void ThreadPriority::SetBackGroundThreadPriority()
 {
-    uint64_t tid;
-    pthread_threadid_np(NULL, &tid);
+    pid_t tid = static_cast<pid_t>(syscall(SYS_gettid));
     if (setpriority(PRIO_PROCESS, tid, BACKGROUND_THREAD_PRIORITY) < 0) {
         LOGW("Failed to set thread priority using setpriority: %s", strerror(errno));
     }

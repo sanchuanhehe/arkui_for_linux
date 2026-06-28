@@ -302,15 +302,78 @@ static void FrameDone(void* data, struct wl_callback* callback, uint32_t /*time*
     static_cast<WindowView*>(data)->Present();
 }
 
+// --- GLES2 texture-blit pipeline (Stage C2-b) ---
+// Full-screen quad textured with the RS RGBA8888 frame. The RS bitmap is
+// top-down (memory row 0 == top of image) while a GL texture's t=0 is its first
+// uploaded row; the quad's UVs flip v so the top screen row samples row 0 and
+// the image lands upright.
+static const char* const TEX_VERT_SRC =
+    "attribute vec2 a_pos;\n"
+    "attribute vec2 a_uv;\n"
+    "varying vec2 v_uv;\n"
+    "void main() {\n"
+    "    v_uv = a_uv;\n"
+    "    gl_Position = vec4(a_pos, 0.0, 1.0);\n"
+    "}\n";
+static const char* const TEX_FRAG_SRC =
+    "precision mediump float;\n"
+    "varying vec2 v_uv;\n"
+    "uniform sampler2D u_tex;\n"
+    "void main() {\n"
+    "    gl_FragColor = texture2D(u_tex, v_uv);\n"
+    "}\n";
+
+// Interleaved [pos.x, pos.y, uv.u, uv.v] * 6 verts (two triangles). uv.v is
+// flipped vs pos.y to invert the top-down RS bitmap.
+static const GLfloat TEX_QUAD[] = {
+    -1.0f,  1.0f, 0.0f, 0.0f, // top-left
+    -1.0f, -1.0f, 0.0f, 1.0f, // bottom-left
+     1.0f, -1.0f, 1.0f, 1.0f, // bottom-right
+    -1.0f,  1.0f, 0.0f, 0.0f, // top-left
+     1.0f, -1.0f, 1.0f, 1.0f, // bottom-right
+     1.0f,  1.0f, 1.0f, 0.0f, // top-right
+};
+constexpr GLuint TEX_ATTR_POS = 0;
+constexpr GLuint TEX_ATTR_UV = 1;
+
+static GLuint CompileShader(GLenum type, const char* src)
+{
+    GLuint shader = glCreateShader(type);
+    if (shader == 0) {
+        LOGE("WindowView: glCreateShader failed (type=0x%x)", type);
+        return 0;
+    }
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
+    GLint ok = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (ok != GL_TRUE) {
+        GLchar log[512] = { 0 };
+        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+        LOGE("WindowView: shader compile failed: %{public}s", log);
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+WindowView* WindowView::instance_ = nullptr;
+
 WindowView::WindowView()
 {
     LOGI("WindowView init");
+    // Single-window scenario: the latest constructed view is the present target
+    // that OnRsFrame (a plain function pointer) reaches via this static pointer.
+    instance_ = this;
 }
 
 WindowView::~WindowView()
 {
     LOGI("WindowView dealloc");
     DestroyWaylandSurface();
+    if (instance_ == this) {
+        instance_ = nullptr;
+    }
 }
 
 void WindowView::EnsureWaylandSurface()
@@ -354,6 +417,7 @@ void WindowView::EnsureWaylandSurface()
     }
     eglSurface_ = surface;
     ctx.SetFocusView(this);
+    instance_ = this; // this view now owns the live EGL surface -> present target.
     LOGI("WindowView::EnsureWaylandSurface: surface %dx%d ready", w, h);
 }
 
@@ -419,10 +483,15 @@ void WindowView::CreateSurfaceNode()
 {
     auto window = windowDelegate_.lock();
     if (window != nullptr) {
-        // Build the real Wayland surface chain, then hand the EGL window handle to
-        // Window/RS as the "layer" (the macOS code handed it the CALayer here).
+        // Build the real Wayland surface chain. Stage C2-b: the surfaceNode's
+        // additionalData is reinterpret_cast to Rosen's OnRenderFunc by the windows
+        // platform group (rs_render_pipeline_client.cpp), so we MUST hand it a real
+        // OnRenderFunc function pointer here -- NOT eglWindow_, which would be
+        // called as a function on the first RS frame and crash. OnRsFrame's
+        // signature matches OnRenderFunc exactly; RS invokes it on its render thread
+        // and Present() blits the captured frame on the main thread.
         EnsureWaylandSurface();
-        window->CreateSurfaceNode(eglWindow_);
+        window->CreateSurfaceNode(reinterpret_cast<void*>(&WindowView::OnRsFrame));
     } else {
         needCreateSurfaceNode_ = true;
     }
@@ -727,6 +796,85 @@ void WindowView::StartBaseDisplayLink()
     Present();
 }
 
+// RS render-thread callback. Only copies the RGBA8888 page-tree bitmap into
+// latestFrame_ under the mutex; the EGL context is main-thread-affine so all GL
+// (texture upload + draw) happens later in Present().
+bool WindowView::OnRsFrame(const void* addr, size_t size, int32_t w, int32_t h, uint64_t /*ts*/)
+{
+    WindowView* self = instance_;
+    if (self == nullptr || addr == nullptr || size == 0 || w <= 0 || h <= 0) {
+        return false;
+    }
+    const uint8_t* src = static_cast<const uint8_t*>(addr);
+    {
+        std::lock_guard<std::mutex> lock(self->frameMutex_);
+        self->latestFrame_.assign(src, src + size);
+        self->frameW_ = w;
+        self->frameH_ = h;
+        self->hasNewFrame_ = true;
+    }
+    // No explicit main-thread wakeup is needed: once StartBaseDisplayLink kicks the
+    // vsync loop, Present() re-arms a wl_surface_frame callback every frame and will
+    // pick this buffer up on the next tick.
+    return true;
+}
+
+void WindowView::EnsureGlSetup()
+{
+    if (glSetup_) {
+        return;
+    }
+    glSetup_ = true; // attempt only once; texProgram_==0 keeps Present's blit off on failure.
+
+    GLuint vs = CompileShader(GL_VERTEX_SHADER, TEX_VERT_SRC);
+    GLuint fs = CompileShader(GL_FRAGMENT_SHADER, TEX_FRAG_SRC);
+    if (vs == 0 || fs == 0) {
+        if (vs != 0) {
+            glDeleteShader(vs);
+        }
+        if (fs != 0) {
+            glDeleteShader(fs);
+        }
+        LOGE("WindowView::EnsureGlSetup: shader compile failed; RS blit disabled");
+        return;
+    }
+
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    // Fix attribute locations so Present needs no glGetAttribLocation lookups.
+    glBindAttribLocation(prog, TEX_ATTR_POS, "a_pos");
+    glBindAttribLocation(prog, TEX_ATTR_UV, "a_uv");
+    glLinkProgram(prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(prog, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE) {
+        GLchar log[512] = { 0 };
+        glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
+        LOGE("WindowView::EnsureGlSetup: program link failed: %{public}s", log);
+        glDeleteProgram(prog);
+        return;
+    }
+    texProgram_ = prog;
+
+    glGenBuffers(1, &vbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(TEX_QUAD), TEX_QUAD, GL_STATIC_DRAW);
+
+    glGenTextures(1, &texId_);
+    glBindTexture(GL_TEXTURE_2D, texId_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    LOGI("WindowView::EnsureGlSetup: texture-blit pipeline ready (prog=%u tex=%u vbo=%u)",
+        texProgram_, texId_, vbo_);
+}
+
 void WindowView::Present()
 {
     auto& ctx = WaylandContext::GetInstance();
@@ -737,15 +885,91 @@ void WindowView::Present()
         static_cast<EGLSurface>(eglSurface_), static_cast<EGLSurface>(eglSurface_),
         static_cast<EGLContext>(ctx.GetEglContext()));
 
-    // Stage C2: the RS render pipeline should blit the page tree's offscreen color
-    // buffer into this EGL surface here (the macOS port did an FBO->drawable blit).
-    // Until that wiring lands, clear to the configured background so the surface is
-    // live and on-screen.
+    // Compile the texture-blit program / quad / texture once the context is current.
+    EnsureGlSetup();
+
     int32_t w = width_ > 0 ? width_ : DEFAULT_WIDTH;
     int32_t h = height_ > 0 ? height_ : DEFAULT_HEIGHT;
+
+    // ACE_TEST_FRAME: feed a synthetic three-band RGBA pattern (cyan/magenta/yellow,
+    // top to bottom) through the exact OnRsFrame -> latestFrame_ path, so the texture
+    // upload + draw can be verified end-to-end before Stage D loads any .ets. Done
+    // once; the band order matches the wlegl_smoke seed (top band == row 0 == cyan).
+    static bool testFrameInjected = false;
+    if (!testFrameInjected && getenv("ACE_TEST_FRAME") != nullptr && w > 0 && h > 0) {
+        testFrameInjected = true;
+        std::vector<uint8_t> pattern(static_cast<size_t>(w) * h * 4);
+        for (int32_t y = 0; y < h; ++y) {
+            uint8_t r = 0;
+            uint8_t g = 0;
+            uint8_t b = 0;
+            if (y < h / 3) {
+                r = 0; g = 200; b = 200; // top: cyan
+            } else if (y < (h * 2) / 3) {
+                r = 200; g = 0; b = 200; // middle: magenta
+            } else {
+                r = 200; g = 200; b = 0; // bottom: yellow
+            }
+            uint8_t* row = pattern.data() + static_cast<size_t>(y) * w * 4;
+            for (int32_t x = 0; x < w; ++x) {
+                row[x * 4 + 0] = r;
+                row[x * 4 + 1] = g;
+                row[x * 4 + 2] = b;
+                row[x * 4 + 3] = 255;
+            }
+        }
+        OnRsFrame(pattern.data(), pattern.size(), w, h, 0);
+        LOGI("WindowView::Present: ACE_TEST_FRAME injected (%dx%d)", w, h);
+    }
+
+    // Background clear first; the textured quad (when there is content) covers the
+    // whole viewport and overwrites it.
     glViewport(0, 0, w, h);
     glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    // Pull the latest RS frame (if any) under the lock, then upload + draw outside
+    // it. frameW_/frameH_ stay >0 once the first frame has arrived, so we keep
+    // re-drawing the resident texture on ticks with no new frame.
+    std::vector<uint8_t> frameCopy;
+    bool newFrame = false;
+    int32_t curW = 0;
+    int32_t curH = 0;
+    {
+        std::lock_guard<std::mutex> lock(frameMutex_);
+        curW = frameW_;
+        curH = frameH_;
+        if (hasNewFrame_ && !latestFrame_.empty()) {
+            frameCopy.swap(latestFrame_); // move out; the GPU texture retains content.
+            hasNewFrame_ = false;
+            newFrame = true;
+        }
+    }
+
+    if (texProgram_ != 0 && curW > 0 && curH > 0) {
+        glBindTexture(GL_TEXTURE_2D, texId_);
+        if (newFrame &&
+            frameCopy.size() >= static_cast<size_t>(curW) * curH * 4) {
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4); // RGBA rows are always 4-byte aligned.
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, curW, curH, 0, GL_RGBA,
+                GL_UNSIGNED_BYTE, frameCopy.data());
+        }
+        glUseProgram(texProgram_);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+        const GLsizei stride = 4 * sizeof(GLfloat);
+        glEnableVertexAttribArray(TEX_ATTR_POS);
+        glVertexAttribPointer(TEX_ATTR_POS, 2, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<const void*>(static_cast<uintptr_t>(0)));
+        glEnableVertexAttribArray(TEX_ATTR_UV);
+        glVertexAttribPointer(TEX_ATTR_UV, 2, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<const void*>(static_cast<uintptr_t>(2 * sizeof(GLfloat))));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texId_);
+        glUniform1i(glGetUniformLocation(texProgram_, "u_tex"), 0);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisableVertexAttribArray(TEX_ATTR_POS);
+        glDisableVertexAttribArray(TEX_ATTR_UV);
+    }
 
     // [linux-port] Headless CI verification: ACE_SHOT_PPM=<path> dumps the rendered
     // back buffer once (glReadPixels is bottom-up, so write rows flipped) as a binary

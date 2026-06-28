@@ -29,6 +29,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 // Forward-declare Wayland/EGL handles so this header stays light; the concrete
@@ -170,8 +171,19 @@ public:
     void OnPointerMotion(double x, double y, int64_t timeStamp);
     void OnKey(int32_t keycode, bool pressed, int64_t timeStamp);
 
-    // EGL present: make current, (Stage C2: blit RS output), swap buffers.
+    // EGL present: make current, upload the latest RS frame as a texture, draw a
+    // full-screen quad, swap buffers.
     void Present();
+
+    // RS render-thread callback (Stage C2-b). Wired into the surfaceNode's
+    // additionalData (cast to Rosen OnRenderFunc), invoked by RSSurfaceWindows::
+    // FlushFrame on the RS render thread with the page tree read back as an
+    // RGBA8888 (premultiplied) CPU bitmap of `w`*`h`*4 bytes. The signature must
+    // match Rosen's `using OnRenderFunc = bool (*)(const void*, const size_t,
+    // const int32_t, const int32_t, const uint64_t);` exactly. It only copies the
+    // bytes into latestFrame_ under frameMutex_ (no GL here: the EGL context lives
+    // on the main thread); Present() picks the frame up on the next vsync tick.
+    static bool OnRsFrame(const void* addr, size_t size, int32_t w, int32_t h, uint64_t ts);
 
     // Wayland accessors used by the context / display-link plumbing.
     wl_surface* GetWlSurface() const { return wlSurface_; }
@@ -184,6 +196,9 @@ private:
     void DestroyWaylandSurface();
     void TouchOutside();
     void DispatchPointer(double x, double y, int32_t phase, int32_t pointerId, int64_t timeStamp);
+    // One-time GLES2 setup (main thread, EGL context current): compiles the
+    // texture-blit program, builds the full-screen quad VBO + the upload texture.
+    void EnsureGlSetup();
 
     std::weak_ptr<OHOS::Rosen::Window> windowDelegate_;
     int32_t width_ = 0;
@@ -208,6 +223,27 @@ private:
     void* eglSurface_ = nullptr; // EGLSurface
     bool configured_ = false;
     bool displayLinkStarted_ = false;
+
+    // ---- Stage C2-b: RS -> screen present (software raster texture upload) ----
+    // OnRsFrame is a plain function pointer (Rosen OnRenderFunc cannot capture
+    // `this`), so it reaches the active window through this static instance
+    // pointer (single-window scenario).
+    static WindowView* instance_;
+
+    // Latest RS frame, produced on the RS render thread and consumed on the main
+    // (present) thread. RGBA8888, frameW_*frameH_*4 bytes.
+    std::mutex frameMutex_;
+    std::vector<uint8_t> latestFrame_;
+    int32_t frameW_ = 0;
+    int32_t frameH_ = 0;
+    bool hasNewFrame_ = false;
+
+    // GLES2 resources for the texture blit (GLuint, kept as unsigned int so the
+    // header needs no GL include).
+    unsigned int texProgram_ = 0;
+    unsigned int texId_ = 0;
+    unsigned int vbo_ = 0;
+    bool glSetup_ = false;
 };
 
 #endif // FOUNDATION_ACE_ADAPTER_LINUX_ENTRANCE_WINDOW_VIEW_H

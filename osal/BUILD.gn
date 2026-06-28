@@ -32,8 +32,11 @@ template("ace_osal_linux_source_set") {
     }
     sources = [
       # Phase 0 path X (M1 link): centralized link stubs for non-rendering-path
-      # symbols (DynamicModule menu factories, accessibility/log OC bridge, skia
-      # SkDebugf/SkFontMgr port). Lets ace_macos link and open a window.
+      # symbols (DynamicModule menu factories, accessibility OC bridge, vibrator,
+      # html/spanstring, clipboard records, Reporter/Udmf/Xcollie/SettingData/
+      # UiSession singletons, picker haptic, environment proxy). Lets ace_linux
+      # link and open a window; mirrors macos/osal/mac_link_stubs.cpp.
+      "linux_link_stubs.cpp",
       "accessibility_event_manager.cpp",
       "accessibility_manager_impl.cpp",
       "ace_checker.cpp",

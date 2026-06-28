@@ -57,6 +57,7 @@ template("ace_linux_source_set") {
       "display_info.cpp",
       "display_manager_agent.cpp",
       "ace_application_info_impl.cpp",
+      "ace_translate_manager.cpp",
       "ace_pointer_data.cc",
       "ace_pointer_data_packet.cc",
       "touch_event.cpp",

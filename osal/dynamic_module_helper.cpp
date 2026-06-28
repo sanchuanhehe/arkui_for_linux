@@ -208,4 +208,14 @@ DynamicModule* DynamicModuleHelper::GetDynamicModule(const std::string& name)
 
     return InsertModuleToCache(name, module, handle, moduleMapMutex_, moduleMap_);
 }
+
+// [linux-port] referenced by overlay_manager.cpp (IsDynamicModuleLoaded("Menu")); the
+// .cpp variant of this file was ported from a revision predating it (mac uses the .mm
+// which has it). With the menu factories returning nullptr, "Menu" is never cached, so
+// this correctly reports not-loaded and the overlay menu skips the dynamic path.
+bool DynamicModuleHelper::IsDynamicModuleLoaded(const std::string& name)
+{
+    std::lock_guard<std::mutex> lock(moduleMapMutex_);
+    return moduleMap_.find(name) != moduleMap_.end();
+}
 } // namespace OHOS::Ace

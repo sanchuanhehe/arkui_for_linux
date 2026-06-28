@@ -69,6 +69,12 @@ bool InputMethodManager::NeedSoftKeyboard() const
     return false;
 }
 
+void InputMethodManager::CloseKeyboard(bool disableNeedToRequestKeyboard)
+{
+    // [linux-port] desktop IME stub — the (bool) overload (called by CloseKeyboard(
+    // FrameNode) below) was dropped when this file was ported; restore it as a no-op.
+}
+
 void InputMethodManager::CloseKeyboard(int32_t instanceId)
 {
     // [linux-port] desktop IME stub.

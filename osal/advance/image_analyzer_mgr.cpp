@@ -56,4 +56,38 @@ void ImageAnalyzerMgr::UpdateInnerConfig(void** overlayData, ImageAnalyzerInnerC
 void ImageAnalyzerMgr::Release(void** overlayData)
 {
 }
+
+// [linux-port] The remaining ImageAnalyzerInterface overrides — the class is `final`
+// and instantiated (GetInstance returns a static), so its vtable references all of
+// them. AI image analysis is unsupported on this port (IsImageAnalyzerSupported() ==
+// false / engine_ never built), so the bodies are inert.
+void ImageAnalyzerMgr::BuildNodeFunc(std::string uri, void* pixelMap, int frameTimestamp, void* config,
+    ImageAnalyzerInnerConfig* uiConfig, void** overlayData)
+{
+}
+
+void ImageAnalyzerMgr::UpdateImage(void** overlayData, std::string uri, void* pixelMap, int frameTimestamp,
+    void* config, ImageAnalyzerInnerConfig* uiConfig)
+{
+}
+
+void ImageAnalyzerMgr::UpdatePressOverlay(void** overlayData, ImageAnalyzerInnerConfig* config)
+{
+}
+
+void ImageAnalyzerMgr::UpdateOverlayStatus(void** overlayData, ImageAnalyzerInnerConfig* config)
+{
+}
+
+void ImageAnalyzerMgr::UpdateOverlayActiveStatus(void** overlayData, bool status)
+{
+}
+
+void ImageAnalyzerMgr::UpdateAIButtonConfig(void** overlayData, AIButtonConfig* config)
+{
+}
+
+void ImageAnalyzerMgr::UpdateKeyEvent(void** overlayData, void* keyEvent)
+{
+}
 }

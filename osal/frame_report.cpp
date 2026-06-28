@@ -137,4 +137,12 @@ void FrameReport::DisableSelfRender()
     disableSelfRenderFunc_ = nullptr;
 }
 
+// [linux-port] referenced by form_render_window.cpp (force-linked render_ng); no-op
+// frame-scheduling telemetry on the desktop client.
+void FrameReport::ReportSchedEvent(
+    FrameSchedEvent event, const std::unordered_map<std::string, std::string>& payLoad)
+{
+    reportSchedEventFunc_ = nullptr;
+}
+
 } // namespace OHOS::Ace
